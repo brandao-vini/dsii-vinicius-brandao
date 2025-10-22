@@ -1,87 +1,67 @@
 import mysql.connector
-from  mysql.connector import Error
 
-def create_connection(host_name, user_name, user_password, db_name):
-    connection = None
-    try:
-        connection = mysql.connector.connect(
-            host=host_name,
-            user=user_name,
-            passwd=user_password,
-            database=db_name  # Opcional, pode ser especificado depois
-        )
-        print("Conexão com o MySQL bem-sucedida!")
-    except Error as e:
-        print(f"O erro '{e}' ocorreu")
-    return connection
+# 1. Inicialize as variáveis de conexão como None
+conexao = None
+cursor = None
 
-def execute_query(connection, query, params=None):
-    cursor = connection.cursor()
-    try:
-        cursor.execute(query, params or ()) # Usar tupla vazia se params for None
-        connection.commit() # Necessário para INSERT, UPDATE, DELETE
-        print("Query executada com sucesso")
-    except Error as e:
-        print(f"O erro '{e}' ocorreu ao executar a query")
+try:
+    # 2. Conecte-se ao banco de dados.
+    # !!! IMPORTANTE: COLOQUE A SENHA CORRETA DO SEU USUÁRIO 'root' AQUI !!!
+    conexao = mysql.connector.connect(
+        host="localhost",
+        database="etecbd",
+        user="root",
+        password="",  # <--- TENTE PRIMEIRO COM A SENHA VAZIA SE USAR XAMPP, OU COLOQUE A SUA SENHA
+        port=3306
+    )
+    
+    # Se a conexão foi bem-sucedida, o código continua
+    print("Conexão estabelecida com sucesso!")
+    cursor = conexao.cursor()
 
-def execute_read_query(connection, query, params=None):
-    cursor = connection.cursor()
-    result = None
-    try:
-        cursor.execute(query, params or ())
-        result = cursor.fetchall() # Pega todos os resultados
-        return result
-    except Error as e:
-        print(f"O erro '{e}' ocorreu ao executar a query de leitura")
-    return result
+    while True:
+        # Leitura dos dados do usuário
+        nome = input("Digite o nome do Cliente: ")
+        estado = input("Digite o Estado (UF): ")
+        sexo = input("Digite o Sexo (M/F): ").upper()
+        status = input("Digite o Status: ")
 
-# --- Exemplo de uso ---
-if __name__ == '__main__':
-    # Substitua com suas credenciais e nome do banco de dados
-    meu_banco = "senaidb" # O nome que você usou no USE
-    conn = create_connection("localhost", "root", "senai", meu_banco)
+        # Inserção no banco de dados
+        try:
+            # 3. CORREÇÃO: Usando a tabela 'Clientes' e a variável 'nome'
+            sql = "INSERT INTO Clientes (Cliente, Estado, Sexo, Status) VALUES (%s, %s, %s, %s)"
+            valores = (nome, estado, sexo, status)
+            
+            cursor.execute(sql, valores)
+            conexao.commit()  # Confirma a inserção no banco
+            print(f"Cliente '{nome}' inserido com sucesso! ID: {cursor.lastrowid}")
 
-    if conn is not None and conn.is_connected():
-        # Exemplo de INSERT (usando placeholders para segurança)
-        insert_vendedor_query = "INSERT INTO Vendedores (Nome) VALUES (%s)"
-        execute_query(conn, insert_vendedor_query, ("João Silva",))
-        execute_query(conn, insert_vendedor_query, ("Maria Oliveira",))
+        except mysql.connector.Error as err:
+            print(f"Erro ao inserir dados: {err}")
+            conexao.rollback() # Desfaz a operação em caso de erro
 
-        # Exemplo de SELECT
-        select_vendedores_query = "SELECT IDVendedor, Nome FROM Vendedores"
-        vendedores = execute_read_query(conn, select_vendedores_query)
+        continuar = input("Deseja inserir outro cliente? (s/n): ")
+        if continuar.lower() != "s":
+            break
 
-        if vendedores:
-            print("\nVendedores cadastrados:")
-            for vendedor in vendedores:
-                print(vendedor)
+    # Consulta dos dados (após o loop de inserção)
+    print("\n--- Exibindo todos os clientes cadastrados ---")
+    cursor.execute("SELECT * FROM Clientes")
+    registros = cursor.fetchall()
 
-        # Exemplo de INSERT na tabela Vendas com data formatada
-        # Lembre-se que a coluna 'Data' no MySQL espera 'YYYY-MM-DD'
-        # Se você tem a data como string no Python, pode formatá-la antes ou usar STR_TO_DATE no SQL
-        data_venda_str = "01/01/2016" # Formato DD/MM/YYYY
-        # Convertendo para YYYY-MM-DD para o Python ou usando STR_TO_DATE no SQL
-        # Opção 1: Converter no Python (se a data já estiver no formato YYYY-MM-DD, não precisa)
-        # from datetime import datetime
-        # data_obj = datetime.strptime(data_venda_str, '%d/%m/%Y')
-        # data_mysql_format = data_obj.strftime('%Y-%m-%d')
-        # insert_venda_query = """
-        # INSERT INTO Vendas (IDVendedor, IDCliente, Data, Total)
-        # VALUES (%s, %s, %s, %s)
-        # """
-        # execute_query(conn, insert_venda_query, (1, 1, data_mysql_format, 8053.60))
+    for row in registros:
+        # 4. CORREÇÃO: Ajustando os índices para a tabela Clientes
+        print(f"ID = {row[0]}, Cliente = {row[1]}, Estado = {row[2]}, Sexo = {row[3]}, Status = {row[4]}\n")
 
-        # Opção 2: Usar STR_TO_DATE diretamente no SQL (como você fez no Workbench)
-        insert_venda_query_com_str_to_date = """
-        INSERT INTO Vendas (IDVendedor, IDCliente, Data, Total)
-        VALUES (%s, %s, STR_TO_DATE(%s, '%d/%m/%Y'), %s)
-        """
-        execute_query(conn, insert_venda_query_com_str_to_date, (1, 1, data_venda_str, 8053.60))
+except mysql.connector.Error as err:
+    # Captura erros de conexão ou de operações SQL
+    print(f"Erro de conexão/operação com o banco de dados: {err}")
 
-
-        # Fechar a conexão
-        if conn.is_connected():
-            conn.close()
-            print("Conexão com o MySQL fechada.")
-    else:
-        print("Não foi possível conectar ao banco de dados.")
+finally:
+    # 5. CORREÇÃO: O bloco finally agora funciona corretamente
+    # Garante que o cursor e a conexão sejam fechados
+    print("Finalizando o programa.")
+    if cursor:
+        cursor.close()
+    if conexao and conexao.is_connected():
+        conexao.close()
